@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { db } from "../db/client";
 import { testimoniesTable, usersTable } from "../db/schema";
 import { eq } from "drizzle-orm";
-import TestimonialsSection from "./components/testimonial-section";
+import TestimonialCarousel from "./components/testimonial-carousel";
 import NavbarComponent from "./components/navbar-components";
 
 export default async function Home() {
@@ -35,12 +35,16 @@ export default async function Home() {
             Healthy Meals, Anytime, Anywhere
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-black font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg">
-              🛒 Pesan Sekarang
-            </Button>
-            <Button variant="outline" className="bg-white/20 backdrop-blur-sm hover:bg-white/30 border-2 border-white/50 text-white font-bold py-4 px-8 rounded-full transition-all duration-300">
-              📋 Lihat Menu
-            </Button>
+            <Link href="/subscription">
+              <Button className="bg-gradient-to-r from-yellow-400 to-orange-400 hover:from-yellow-500 hover:to-orange-500 text-black font-bold py-4 px-8 rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg">
+                🛒 Pesan Sekarang
+              </Button>
+            </Link>
+            <Link href="/menu">
+              <Button variant="outline" className="bg-white/20 backdrop-blur-sm hover:bg-white/30 border-2 border-white/50 text-white font-bold py-4 px-8 rounded-full transition-all duration-300">
+                📋 Lihat Menu
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -121,8 +125,8 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <TestimonialsSection testimonials={testimonials} />
+      {/* Testimonials Section - Updated to use Carousel */}
+      <TestimonialCarousel testimonials={testimonials} />
 
       {/* Contact Section */}
       <section className="py-16 bg-gradient-to-r from-orange-600 to-red-600">
@@ -145,9 +149,11 @@ export default async function Home() {
                 </div>
               </div>
             </div>
-            <Button className="mt-6 bg-white text-orange-600 font-bold py-3 px-8 rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105">
-              💬 Chat WhatsApp
-            </Button>
+            <Link href="/subscription">
+              <Button className="mt-6 bg-white text-orange-600 font-bold py-3 px-8 rounded-full hover:bg-gray-100 transition-all duration-300 transform hover:scale-105">
+                💬 Chat WhatsApp
+              </Button>
+            </Link>
           </div>
         </div>
       </section>

@@ -76,9 +76,11 @@ export default function NavbarComponent() {
           </NavigationMenuList>
         </NavigationMenu>
         {/* Desktop CTA Button */}
-        <Button className="hidden md:flex bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white">
-          Order Now
-        </Button>
+        <Link href="/subscription">
+          <Button className="hidden md:flex bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white">
+            Order Now
+          </Button>
+        </Link>
         {/* Mobile Menu */}
         <Sheet>
           <SheetTrigger asChild className="md:hidden">
@@ -115,9 +117,11 @@ export default function NavbarComponent() {
                   </span>
                 </Link>
               ))}
-              <Button className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white mt-4">
-                Order Now
-              </Button>
+              <Link href="/subscription">
+                <Button className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white mt-4">
+                  Order Now
+                </Button>
+              </Link>
             </div>
           </SheetContent>
         </Sheet>
