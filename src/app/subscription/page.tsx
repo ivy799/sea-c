@@ -1,5 +1,5 @@
 import NavbarComponent from "../components/navbar-components";
-import SubscriptionForm from "../components/subscription-form";
+import SubscriptionForm from "../components/subscription-form-fixed";
 
 export default function SubscriptionPage() {
   return (

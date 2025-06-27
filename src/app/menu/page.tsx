@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { db } from "../../db/client";
 import { mealPlansTable, testimoniesTable, usersTable } from "../../db/schema";
 import { eq } from "drizzle-orm";
@@ -67,9 +68,11 @@ export default async function MealPlansPage() {
                         <p className="text-xl mb-8 opacity-90">
                             Join thousands of satisfied customers who trust us for their daily meals
                         </p>
-                        <button className="bg-white text-orange-600 font-bold py-4 px-8 rounded-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 shadow-lg">
-                            Get Started Today
-                        </button>
+                        <Link href="/subscription">
+                            <button className="bg-white text-orange-600 font-bold py-4 px-8 rounded-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 shadow-lg">
+                                Get Started Today
+                            </button>
+                        </Link>
                     </div>
                 </div>
             </section>

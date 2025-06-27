@@ -51,32 +51,18 @@ export default function SubscriptionForm() {
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
 
-  // Test function to check meal plans
-  const testMealPlans = async () => {
-    try {
-      const response = await fetch('/api/meal-plans', { method: 'POST' });
-      const result = await response.json();
-      console.log("Meal plans initialization:", result);
-      alert(`Meal plans test: ${result.message}`);
-    } catch (error) {
-      console.error('Error testing meal plans:', error);
-      alert('Error testing meal plans: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
   // Fetch meal plans on component mount
   useEffect(() => {
     const fetchMealPlans = async () => {
+      console.log("Fetching meal plans...");
       try {
-        console.log("Fetching meal plans..."); // Debug log
         const response = await fetch('/api/meal-plans');
         const result = await response.json();
-        
-        console.log("Meal plans response:", result); // Debug log
+        console.log("Meal plans response:", result);
         
         if (result.success) {
           setMealPlans(result.data);
-          console.log("Meal plans loaded:", result.data); // Debug log
+          console.log("Meal plans loaded:", result.data);
         } else {
           console.error('Failed to fetch meal plans:', result.error);
           // Fallback to default plans if API fails
@@ -191,11 +177,10 @@ export default function SubscriptionForm() {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log("Form submitted!", formData); // Debug log
+    console.log("Form submitted!");
     
     if (!validateForm()) {
-      console.log("Form validation failed", errors); // Debug log
+      console.log("Form validation failed");
       return;
     }
 
@@ -212,7 +197,7 @@ export default function SubscriptionForm() {
         totalPrice: calculateTotalPrice(),
       };
 
-      console.log("Sending subscription data:", subscriptionData); // Debug log
+      console.log("Sending subscription data:", subscriptionData);
 
       const response = await fetch('/api/subscriptions', {
         method: 'POST',
@@ -223,7 +208,6 @@ export default function SubscriptionForm() {
       });
 
       const result = await response.json();
-      console.log("API Response:", result); // Debug log
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to submit subscription');
@@ -262,46 +246,17 @@ export default function SubscriptionForm() {
             </div>
 
             <div className="p-8 space-y-8">
-              {/* Debug Section */}
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-yellow-800 mb-2">🔧 Debug Panel</h3>
-                <div className="space-y-2">
-                  <button
-                    type="button"
-                    onClick={testMealPlans}
-                    className="bg-yellow-600 text-white px-4 py-2 rounded text-sm"
-                  >
-                    Test Meal Plans API
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => console.log("Current form data:", formData)}
-                    className="bg-blue-600 text-white px-4 py-2 rounded text-sm ml-2"
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => console.log("Current errors:", errors)}
-                    className="bg-red-600 text-white px-4 py-2 rounded text-sm ml-2"
-                  >
-                    Log Errors
-                  </button>
+              {/* Debug Section - Show validation errors */}
+              {Object.keys(errors).length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h3 className="text-lg font-semibold text-red-800 mb-2">❌ Please fix the following errors:</h3>
+                  <ul className="list-disc list-inside text-red-700 text-sm space-y-1">
+                    {Object.entries(errors).map(([field, error]) => (
+                      <li key={field}><strong>{field}:</strong> {error}</li>
+                    ))}
+                  </ul>
                 </div>
-                {/* Display current errors */}
-                {Object.keys(errors).length > 0 && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded">
-                    <h4 className="text-red-800 font-semibold mb-2">Current Validation Errors:</h4>
-                    <ul className="list-disc list-inside text-red-700 text-sm">
-                      {Object.entries(errors).map(([field, error]) => (
-                        <li key={field}><strong>{field}:</strong> {error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <div className="text-sm text-gray-600">
-                  <p>Meal Plans Loaded: {mealPlans.length}</p>
-                  <p>Form Valid: {Object.keys(errors).length === 0 ? 'Yes' : 'No'}</p>
-                </div>
-              </div>
+              )}
 
               {/* Personal Information */}
               <div className="space-y-6">
@@ -503,7 +458,7 @@ export default function SubscriptionForm() {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  onClick={() => console.log("Button clicked!")} // Debug click
+                  onClick={() => console.log("Button clicked!")}
                   className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg text-lg"
                 >
                   {isSubmitting ? (
@@ -515,15 +470,6 @@ export default function SubscriptionForm() {
                     "Subscribe Now"
                   )}
                 </Button>
-                
-                {/* Alternative button for testing */}
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg"
-                >
-                  Test Submit (Alternative)
-                </button>
               </div>
             </div>
           </form>
