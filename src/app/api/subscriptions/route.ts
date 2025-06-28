@@ -2,40 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/db/client';
-import { subscriptionsTable, deliveryDaysTable, subscriptionMealTypesTable, mealPlansTable, usersTable } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
-
-// Add retry function for database operations
-async function withRetry<T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
-): Promise<T> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      
-      // Check if it's a connection timeout error
-      const isTimeoutError = error instanceof Error && 
-        (error.message.includes('timeout') || 
-         error.message.includes('connect') ||
-         error.message.includes('ECONNRESET'));
-      
-      if (isTimeoutError) {
-        console.log(`Database operation failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        delay *= 2; // Exponential backoff
-      } else {
-        throw error; // Non-timeout errors should not be retried
-      }
-    }
-  }
-  throw new Error('Max retries exceeded');
-}
+import { subscriptionsTable, deliveryDaysTable, mealPlansTable, usersTable } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { sanitizeInput, validateFormData, validators } from '@/lib/security';
+import { validateCSRF, applyRateLimit, securityHeaders } from '@/lib/csrf';
 
 // Mapping for meal types
 const MEAL_TYPE_MAP = {
@@ -69,6 +39,14 @@ export async function POST(request: NextRequest) {
   try {
     console.log("Subscription API called");
     
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     // Check authentication
     const session = await getServerSession(authOptions);
     console.log("Session data:", session);
@@ -77,7 +55,17 @@ export async function POST(request: NextRequest) {
       console.log("Authentication failed - no session");
       return NextResponse.json(
         { error: 'Authentication required' },
-        { status: 401 }
+        { status: 401, headers: securityHeaders() }
+      );
+    }
+
+    // Validate CSRF token for POST requests
+    const csrfValidation = await validateCSRF(request);
+    if (!csrfValidation.valid) {
+      console.log("CSRF validation failed:", csrfValidation.error);
+      return NextResponse.json(
+        { error: csrfValidation.error || 'CSRF validation failed' },
+        { status: 403, headers: securityHeaders() }
       );
     }
 
@@ -86,11 +74,67 @@ export async function POST(request: NextRequest) {
     const body: SubscriptionRequest = await request.json();
     console.log("Request body:", body);
     
+    // Sanitize all input fields
+    const sanitizedData = {
+      name: sanitizeInput(body.name || '', 'name'),
+      phone: sanitizeInput(body.phone || '', 'phone'),
+      plan: sanitizeInput(body.plan || '', 'text'),
+      mealTypes: Array.isArray(body.mealTypes) ? body.mealTypes.map(mt => sanitizeInput(mt, 'text')) : [],
+      deliveryDays: Array.isArray(body.deliveryDays) ? body.deliveryDays.map(dd => sanitizeInput(dd, 'text')) : [],
+      allergies: sanitizeInput(body.allergies || '', 'allergies'),
+      totalPrice: typeof body.totalPrice === 'number' ? body.totalPrice : 0
+    };
+
+    // Validate sanitized data
+    const validation = validateFormData({
+      name: sanitizedData.name,
+      phone: sanitizedData.phone,
+      allergies: sanitizedData.allergies
+    });
+
+    if (!validation.isValid) {
+      return NextResponse.json(
+        { error: 'Invalid input data', details: validation.errors },
+        { status: 400, headers: securityHeaders() }
+      );
+    }
+    
     // Validate required fields
-    if (!body.name || !body.phone || !body.plan || !body.mealTypes.length || !body.deliveryDays.length) {
+    if (!sanitizedData.name || !sanitizedData.phone || !sanitizedData.plan || !sanitizedData.mealTypes.length || !sanitizedData.deliveryDays.length) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { status: 400, headers: securityHeaders() }
+      );
+    }
+
+    // Additional validation for meal types and delivery days
+    const validMealTypes = ['breakfast', 'lunch', 'dinner'];
+    const validDeliveryDays = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    
+    for (const mealType of sanitizedData.mealTypes) {
+      if (!validMealTypes.includes(mealType.toLowerCase())) {
+        return NextResponse.json(
+          { error: `Invalid meal type: ${mealType}` },
+          { status: 400, headers: securityHeaders() }
+        );
+      }
+    }
+
+    for (const day of sanitizedData.deliveryDays) {
+      if (!validDeliveryDays.includes(day.toLowerCase())) {
+        return NextResponse.json(
+          { error: `Invalid delivery day: ${day}` },
+          { status: 400, headers: securityHeaders() }
+        );
+      }
+    }
+
+    // Validate plan ID is numeric
+    const planId = parseInt(sanitizedData.plan);
+    if (isNaN(planId) || planId <= 0) {
+      return NextResponse.json(
+        { error: 'Invalid plan ID' },
+        { status: 400, headers: securityHeaders() }
       );
     }
 
@@ -112,10 +156,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Update user phone if provided and different
-    if (body.phone && body.phone !== user[0].phone_number) {
+    if (sanitizedData.phone && sanitizedData.phone !== user[0].phone_number) {
       await db
         .update(usersTable)
-        .set({ phone_number: body.phone })
+        .set({ phone_number: sanitizedData.phone })
         .where(eq(usersTable.id, userId));
     }
 
@@ -123,7 +167,7 @@ export async function POST(request: NextRequest) {
     const mealPlan = await db
       .select()
       .from(mealPlansTable)
-      .where(eq(mealPlansTable.id, parseInt(body.plan)))
+      .where(eq(mealPlansTable.id, planId))
       .limit(1);
     
     if (mealPlan.length === 0) {
@@ -131,7 +175,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Validate meal types
-    const mealTypeNumbers = body.mealTypes.map(mealType => {
+    const mealTypeNumbers = sanitizedData.mealTypes.map(mealType => {
       const mealTypeId = MEAL_TYPE_MAP[mealType as keyof typeof MEAL_TYPE_MAP];
       if (mealTypeId === undefined) {
         throw new Error(`Invalid meal type: ${mealType}`);
@@ -142,19 +186,19 @@ export async function POST(request: NextRequest) {
     // 4. Calculate and validate total price
     // Formula: Total Price = (Plan Price) × (Number of Meal Types) × (Number of Delivery Days) × 4.3
     const monthlyMultiplier = 4.3; // weeks per month
-    const expectedPrice = mealPlan[0].price_per_meal * body.mealTypes.length * body.deliveryDays.length * monthlyMultiplier;
+    const expectedPrice = mealPlan[0].price_per_meal * sanitizedData.mealTypes.length * sanitizedData.deliveryDays.length * monthlyMultiplier;
     
     console.log("Price calculation check:", {
       planPrice: mealPlan[0].price_per_meal,
-      mealTypesCount: body.mealTypes.length,
-      deliveryDaysCount: body.deliveryDays.length,
+      mealTypesCount: sanitizedData.mealTypes.length,
+      deliveryDaysCount: sanitizedData.deliveryDays.length,
       monthlyMultiplier,
       expectedPrice,
-      receivedPrice: body.totalPrice
+      receivedPrice: sanitizedData.totalPrice
     });
     
-    if (Math.abs(body.totalPrice - expectedPrice) > 1) {
-      throw new Error(`Price mismatch. Expected: ${expectedPrice}, Received: ${body.totalPrice}`);
+    if (Math.abs(sanitizedData.totalPrice - expectedPrice) > 1) {
+      throw new Error(`Price mismatch. Expected: ${expectedPrice}, Received: ${sanitizedData.totalPrice}`);
     }
 
     // 5. Create single subscription
@@ -162,11 +206,11 @@ export async function POST(request: NextRequest) {
       .insert(subscriptionsTable)
       .values({
         user_id: userId,
-        meal_plan_id: parseInt(body.plan),
+        meal_plan_id: planId,
         meal_type: mealTypeNumbers[0], // Store first meal type for compatibility
         total_price: expectedPrice,
         allergies: JSON.stringify({
-          allergies: body.allergies || null,
+          allergies: sanitizedData.allergies || null,
           meal_types: mealTypeNumbers // Store all meal types here
         }),
         status: 'active',
@@ -179,7 +223,7 @@ export async function POST(request: NextRequest) {
     // For now, we store only the first meal type in the main subscription table
 
     // 7. Create delivery day entries
-    for (const day of body.deliveryDays) {
+    for (const day of sanitizedData.deliveryDays) {
       const dayOfWeek = DAY_OF_WEEK_MAP[day as keyof typeof DAY_OF_WEEK_MAP];
       if (dayOfWeek === undefined) {
         throw new Error(`Invalid delivery day: ${day}`);
@@ -201,7 +245,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: result,
       message: 'Subscription submitted successfully! We will contact you soon.',
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Subscription creation error:', error);
@@ -211,7 +255,7 @@ export async function POST(request: NextRequest) {
         error: 'Failed to create subscription', 
         details: error instanceof Error ? error.message : 'Unknown error' 
       },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }
@@ -219,22 +263,50 @@ export async function POST(request: NextRequest) {
 // GET endpoint to retrieve user subscriptions (optional)
 export async function GET(request: NextRequest) {
   try {
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const phone = searchParams.get('phone');
     const userId = searchParams.get('userId');
 
-    if (!phone && !userId) {
+    // Sanitize input parameters
+    const sanitizedPhone = phone ? sanitizeInput(phone, 'phone') : null;
+    const sanitizedUserId = userId ? sanitizeInput(userId, 'text') : null;
+
+    if (!sanitizedPhone && !sanitizedUserId) {
       return NextResponse.json(
         { error: 'Phone number or user ID is required' },
-        { status: 400 }
+        { status: 400, headers: securityHeaders() }
+      );
+    }
+
+    // Validate phone format if provided
+    if (sanitizedPhone && !validators.phone(sanitizedPhone)) {
+      return NextResponse.json(
+        { error: 'Invalid phone number format' },
+        { status: 400, headers: securityHeaders() }
+      );
+    }
+
+    // Validate user ID format if provided
+    if (sanitizedUserId && (isNaN(parseInt(sanitizedUserId)) || parseInt(sanitizedUserId) <= 0)) {
+      return NextResponse.json(
+        { error: 'Invalid user ID format' },
+        { status: 400, headers: securityHeaders() }
       );
     }
 
     let whereCondition;
-    if (userId) {
-      whereCondition = eq(usersTable.id, parseInt(userId));
+    if (sanitizedUserId) {
+      whereCondition = eq(usersTable.id, parseInt(sanitizedUserId));
     } else {
-      whereCondition = eq(usersTable.phone_number, phone!);
+      whereCondition = eq(usersTable.phone_number, sanitizedPhone!);
     }
 
     // Get user and their subscriptions
@@ -260,7 +332,7 @@ export async function GET(request: NextRequest) {
     if (userWithSubscriptions.length === 0) {
       return NextResponse.json(
         { error: 'User not found' },
-        { status: 404 }
+        { status: 404, headers: securityHeaders() }
       );
     }
 
@@ -290,14 +362,14 @@ export async function GET(request: NextRequest) {
         },
         subscriptions: subscriptionsWithDeliveryDays,
       },
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Get subscriptions error:', error);
     
     return NextResponse.json(
       { error: 'Failed to retrieve subscriptions' },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }

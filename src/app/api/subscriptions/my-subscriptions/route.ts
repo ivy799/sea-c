@@ -2,17 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/db/client';
-import { subscriptionsTable, deliveryDaysTable, mealPlansTable, subscriptionMealTypesTable } from '@/db/schema';
+import { subscriptionsTable, deliveryDaysTable, mealPlansTable } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { applyRateLimit, securityHeaders } from '@/lib/csrf';
 
 export async function GET(request: NextRequest) {
   try {
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     // Check authentication
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Authentication required' },
-        { status: 401 }
+        { status: 401, headers: securityHeaders() }
       );
     }
 
@@ -55,8 +64,9 @@ export async function GET(request: NextRequest) {
               actualAllergies = parsed.allergies;
             }
           }
-        } catch (e) {
+        } catch (error) {
           // If parsing fails, keep original allergies and single meal type
+          console.log('Failed to parse allergies JSON:', error);
         }
 
         return {
@@ -70,13 +80,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       subscriptions: subscriptionsWithDetails
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Error fetching user subscriptions:', error);
     return NextResponse.json(
       { error: 'Failed to fetch subscriptions' },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }

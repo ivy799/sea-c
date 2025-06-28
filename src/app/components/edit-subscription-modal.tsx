@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { sanitizeInput, validateFormData } from "@/lib/security";
 
 interface MealPlan {
   id: number;
@@ -59,6 +60,8 @@ export default function EditSubscriptionModal({
   const [allergies, setAllergies] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [csrfToken, setCsrfToken] = useState<string>("");
+  const [securityErrors, setSecurityErrors] = useState<Record<string, string>>({});
 
   // Initialize form with current subscription data
   useEffect(() => {
@@ -102,6 +105,25 @@ export default function EditSubscriptionModal({
       setAllergies(actualAllergies);
     }
   }, [subscription, isOpen]);
+
+  // Fetch CSRF token
+  useEffect(() => {
+    const fetchCsrfToken = async () => {
+      try {
+        const response = await fetch('/api/auth/csrf-token');
+        if (response.ok) {
+          const data = await response.json();
+          setCsrfToken(data.token);
+        }
+      } catch (error) {
+        console.error('Failed to fetch CSRF token:', error);
+      }
+    };
+
+    if (isOpen) {
+      fetchCsrfToken();
+    }
+  }, [isOpen]);
 
   // Fetch meal plans
   useEffect(() => {
@@ -151,6 +173,21 @@ export default function EditSubscriptionModal({
     );
   };
 
+  const handleAllergiesChange = (value: string) => {
+    // Sanitize input
+    const sanitized = sanitizeInput(value, 'allergies');
+    
+    // Validate input
+    const validation = validateFormData({ allergies: sanitized });
+    if (!validation.isValid) {
+      setSecurityErrors({ allergies: validation.errors.allergies || '' });
+    } else {
+      setSecurityErrors(prev => ({ ...prev, allergies: '' }));
+    }
+    
+    setAllergies(sanitized);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -169,6 +206,7 @@ export default function EditSubscriptionModal({
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "x-csrf-token": csrfToken,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -295,11 +333,14 @@ export default function EditSubscriptionModal({
               </label>
               <textarea
                 value={allergies}
-                onChange={(e) => setAllergies(e.target.value)}
+                onChange={(e) => handleAllergiesChange(e.target.value)}
                 placeholder="Please list any allergies or dietary restrictions..."
                 rows={3}
                 className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {securityErrors.allergies && (
+                <p className="mt-1 text-sm text-red-600">{securityErrors.allergies}</p>
+              )}
             </div>
 
             {/* Total Price */}

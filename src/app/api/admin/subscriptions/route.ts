@@ -4,15 +4,24 @@ import { authOptions } from '@/lib/auth';
 import { db } from '@/db/client';
 import { subscriptionsTable, usersTable, mealPlansTable, UserRole } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { applyRateLimit, securityHeaders } from '@/lib/csrf';
 
 export async function GET(request: NextRequest) {
   try {
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     // Check authentication and admin role
     const session = await getServerSession(authOptions);
     if (!session || !session.user || session.user.role !== UserRole.Admin) {
       return NextResponse.json(
         { error: 'Admin access required' },
-        { status: 403 }
+        { status: 403, headers: securityHeaders() }
       );
     }
 
@@ -32,13 +41,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       subscriptions
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Error fetching subscriptions:', error);
     return NextResponse.json(
       { error: 'Failed to fetch subscriptions' },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import { sanitizeInput, validateFormData, escapeHtml } from "@/lib/security";
 
 interface FormData {
   name: string;
@@ -49,6 +50,10 @@ export default function SubscriptionForm() {
     allergies: "",
   });
 
+  // Security state
+  const [csrfToken, setCsrfToken] = useState<string>("");
+  const [securityErrors, setSecurityErrors] = useState<Record<string, string>>({});
+
   // Update form when session loads
   useEffect(() => {
     if (session?.user) {
@@ -56,8 +61,27 @@ export default function SubscriptionForm() {
         ...prev,
         name: session.user.name || ""
       }));
+      
+      // Fetch CSRF token
+      fetchCSRFToken();
     }
   }, [session]);
+
+  // Fetch CSRF token for security
+  const fetchCSRFToken = async () => {
+    try {
+      const response = await fetch('/api/auth/csrf-token', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCsrfToken(data.csrfToken);
+      }
+    } catch (error) {
+      console.error('Error fetching CSRF token:', error);
+    }
+  };
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -183,22 +207,59 @@ export default function SubscriptionForm() {
     }).format(amount);
   };
 
-  // Handle form field changes
+  // Handle form field changes with security validation
   const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Sanitize input based on field type
+    let sanitizedValue = value;
+    
+    switch (field) {
+      case 'name':
+        sanitizedValue = sanitizeInput(value, 'name');
+        break;
+      case 'phone':
+        sanitizedValue = sanitizeInput(value, 'phone');
+        break;
+      case 'allergies':
+        sanitizedValue = sanitizeInput(value, 'allergies');
+        break;
+      default:
+        sanitizedValue = sanitizeInput(value, 'text');
+    }
+
+    // Update form data
+    setFormData(prev => ({ ...prev, [field]: sanitizedValue }));
+    
+    // Clear errors for this field
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
+    }
+    
+    // Clear security errors for this field
+    if (securityErrors[field]) {
+      setSecurityErrors(prev => ({ ...prev, [field]: "" }));
+    }
+
+    // Real-time validation for security
+    const fieldData = { [field]: sanitizedValue };
+    const validation = validateFormData(fieldData);
+    
+    if (!validation.isValid && validation.errors[field]) {
+      setSecurityErrors(prev => ({ ...prev, [field]: validation.errors[field] }));
     }
   };
 
   // Handle checkbox changes for meal types and delivery days
   const handleCheckboxChange = (field: 'mealTypes' | 'deliveryDays', value: string) => {
+    // Sanitize the checkbox value
+    const sanitizedValue = sanitizeInput(value, 'text');
+    
     setFormData(prev => ({
       ...prev,
-      [field]: prev[field].includes(value)
-        ? prev[field].filter(item => item !== value)
-        : [...prev[field], value]
+      [field]: prev[field].includes(sanitizedValue)
+        ? prev[field].filter(item => item !== sanitizedValue)
+        : [...prev[field], sanitizedValue]
     }));
+    
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
     }
@@ -209,17 +270,28 @@ export default function SubscriptionForm() {
     console.log("Validating form with data:", formData);
     const newErrors: Record<string, string> = {};
 
+    // Enhanced validation with security checks
     if (!formData.name.trim()) {
       console.log("Name validation failed:", formData.name);
       newErrors.name = "Name is required";
+    } else if (formData.name.length < 2 || formData.name.length > 50) {
+      newErrors.name = "Name must be between 2 and 50 characters";
+    } else if (!/^[a-zA-Z\s\-']+$/.test(formData.name)) {
+      newErrors.name = "Name can only contain letters, spaces, hyphens, and apostrophes";
     }
 
     if (!formData.phone.trim()) {
       console.log("Phone validation failed:", formData.phone);
       newErrors.phone = "Phone number is required";
-    } else if (!/^(\+62|62|0)[0-9]{9,13}$/.test(formData.phone.replace(/\s/g, ''))) {
-      console.log("Phone format validation failed:", formData.phone);
-      newErrors.phone = "Please enter a valid Indonesian phone number";
+    } else {
+      // Remove all non-numeric characters for validation
+      const cleanPhone = formData.phone.replace(/\D/g, '');
+      if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+        newErrors.phone = "Phone number must be between 10-15 digits";
+      } else if (!/^(\+62|62|0)?[0-9]{9,13}$/.test(formData.phone.replace(/\s/g, ''))) {
+        console.log("Phone format validation failed:", formData.phone);
+        newErrors.phone = "Please enter a valid phone number";
+      }
     }
 
     if (!formData.plan) {
@@ -235,6 +307,13 @@ export default function SubscriptionForm() {
     if (formData.deliveryDays.length === 0) {
       console.log("Delivery days validation failed:", formData.deliveryDays);
       newErrors.deliveryDays = "Please select at least one delivery day";
+    }
+
+    // Validate allergies field if provided
+    if (formData.allergies && formData.allergies.length > 500) {
+      newErrors.allergies = "Allergies description is too long (max 500 characters)";
+    } else if (formData.allergies && !/^[a-zA-Z0-9\s,.\-()]*$/.test(formData.allergies)) {
+      newErrors.allergies = "Allergies field contains invalid characters";
     }
 
     console.log("Validation errors:", newErrors);
@@ -253,6 +332,21 @@ export default function SubscriptionForm() {
       alert("Please log in to create a subscription");
       return;
     }
+
+    // Security validation
+    const securityValidation = validateFormData(formData);
+    if (!securityValidation.isValid) {
+      setSecurityErrors(securityValidation.errors);
+      alert("Security validation failed. Please check your input and remove any invalid characters.");
+      return;
+    }
+
+    // Check CSRF token
+    if (!csrfToken) {
+      alert("Security token missing. Please refresh the page and try again.");
+      await fetchCSRFToken();
+      return;
+    }
     
     if (!validateForm()) {
       console.log("Form validation failed", errors); // Debug log
@@ -263,12 +357,12 @@ export default function SubscriptionForm() {
 
     try {
       const subscriptionData = {
-        name: formData.name,
-        phone: formData.phone,
+        name: escapeHtml(formData.name),
+        phone: sanitizeInput(formData.phone, 'phone'),
         plan: formData.plan, // This will be the plan ID as string
-        mealTypes: formData.mealTypes,
-        deliveryDays: formData.deliveryDays,
-        allergies: formData.allergies,
+        mealTypes: formData.mealTypes.map(type => sanitizeInput(type, 'text')),
+        deliveryDays: formData.deliveryDays.map(day => sanitizeInput(day, 'text')),
+        allergies: sanitizeInput(formData.allergies, 'allergies'),
         totalPrice: calculateTotalPrice(),
       };
 
@@ -278,6 +372,7 @@ export default function SubscriptionForm() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken, // Include CSRF token
         },
         credentials: 'include', // Include cookies for authentication
         body: JSON.stringify(subscriptionData),
@@ -419,6 +514,7 @@ export default function SubscriptionForm() {
                     placeholder="08123456789"
                   />
                   {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
+                  {securityErrors.phone && <p className="text-red-600 text-sm mt-1 bg-red-50 p-2 rounded border-l-4 border-red-500">⚠️ {securityErrors.phone}</p>}
                 </div>
               </div>
 
@@ -466,6 +562,7 @@ export default function SubscriptionForm() {
                   </div>
                 )}
                 {errors.plan && <p className="text-red-500 text-sm">{errors.plan}</p>}
+                {securityErrors.plan && <p className="text-red-600 text-sm mt-1 bg-red-50 p-2 rounded border-l-4 border-red-500">⚠️ {securityErrors.plan}</p>}
               </div>
 
               {/* Meal Types */}
@@ -499,6 +596,7 @@ export default function SubscriptionForm() {
                   ))}
                 </div>
                 {errors.mealTypes && <p className="text-red-500 text-sm">{errors.mealTypes}</p>}
+                {securityErrors.mealTypes && <p className="text-red-600 text-sm mt-1 bg-red-50 p-2 rounded border-l-4 border-red-500">⚠️ {securityErrors.mealTypes}</p>}
               </div>
 
               {/* Delivery Days */}
@@ -530,6 +628,7 @@ export default function SubscriptionForm() {
                   ))}
                 </div>
                 {errors.deliveryDays && <p className="text-red-500 text-sm">{errors.deliveryDays}</p>}
+                {securityErrors.deliveryDays && <p className="text-red-600 text-sm mt-1 bg-red-50 p-2 rounded border-l-4 border-red-500">⚠️ {securityErrors.deliveryDays}</p>}
               </div>
 
               {/* Allergies */}
@@ -544,6 +643,8 @@ export default function SubscriptionForm() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300"
                   placeholder="Please list any allergies, dietary restrictions, or special requirements..."
                 />
+                {errors.allergies && <p className="text-red-500 text-sm mt-1">{errors.allergies}</p>}
+                {securityErrors.allergies && <p className="text-red-600 text-sm mt-1 bg-red-50 p-2 rounded border-l-4 border-red-500">⚠️ {securityErrors.allergies}</p>}
               </div>
 
               {/* Price Calculation */}

@@ -1,9 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { mealPlansTable } from '@/db/schema';
+import { applyRateLimit, securityHeaders } from '@/lib/csrf';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     // Check if meal plans already exist
     const existingPlans = await db.select().from(mealPlansTable).limit(1);
     
@@ -12,7 +21,7 @@ export async function POST() {
         success: true,
         message: 'Meal plans already exist',
         data: existingPlans
-      });
+      }, { headers: securityHeaders() });
     }
 
     // Insert meal plans
@@ -41,7 +50,7 @@ export async function POST() {
       success: true,
       message: 'Meal plans created successfully',
       data: newPlans
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Error creating meal plans:', error);
@@ -51,13 +60,21 @@ export async function POST() {
         error: 'Failed to create meal plans', 
         details: error instanceof Error ? error.message : 'Unknown error' 
       },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Apply rate limiting
+    if (!applyRateLimit(request, 'general')) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429, headers: securityHeaders() }
+      );
+    }
+
     console.log("Fetching meal plans from database...");
     const mealPlans = await db.select().from(mealPlansTable);
     
@@ -72,7 +89,7 @@ export async function GET() {
         description: plan.description,
         image: plan.image
       }))
-    });
+    }, { headers: securityHeaders() });
 
   } catch (error) {
     console.error('Error fetching meal plans:', error);
@@ -83,7 +100,7 @@ export async function GET() {
         error: 'Failed to fetch meal plans', 
         details: error instanceof Error ? error.message : 'Unknown error' 
       },
-      { status: 500 }
+      { status: 500, headers: securityHeaders() }
     );
   }
 }
