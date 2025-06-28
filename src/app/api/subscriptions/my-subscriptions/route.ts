@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
         total_price: subscriptionsTable.total_price,
         allergies: subscriptionsTable.allergies,
         status: subscriptionsTable.status,
+        created_at: subscriptionsTable.created_at,
       })
       .from(subscriptionsTable)
       .innerJoin(mealPlansTable, eq(subscriptionsTable.meal_plan_id, mealPlansTable.id))

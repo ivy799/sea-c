@@ -91,7 +91,15 @@ export default function AdminPage() {
         
         <div className="container mx-auto px-4 py-8">
           <div className="max-w-7xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-900 mb-8">Admin Dashboard</h1>
+            <div className="flex items-center justify-between mb-8">
+              <h1 className="text-3xl font-bold text-gray-900">Admin Panel</h1>
+              <a
+                href="/admin/dashboard"
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                📊 View Dashboard
+              </a>
+            </div>
             
             {/* Tab Navigation */}
             <div className="border-b border-gray-200 mb-6">

@@ -33,11 +33,12 @@ export async function GET(request: NextRequest) {
         meal_plan_name: mealPlansTable.name,
         total_price: subscriptionsTable.total_price,
         status: subscriptionsTable.status,
+        created_at: subscriptionsTable.created_at,
       })
       .from(subscriptionsTable)
       .innerJoin(usersTable, eq(subscriptionsTable.user_id, usersTable.id))
       .innerJoin(mealPlansTable, eq(subscriptionsTable.meal_plan_id, mealPlansTable.id))
-      .orderBy(subscriptionsTable.id);
+      .orderBy(subscriptionsTable.created_at);
 
     return NextResponse.json({
       subscriptions

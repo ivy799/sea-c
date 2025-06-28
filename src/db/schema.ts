@@ -31,7 +31,8 @@ export const subscriptionsTable = pgTable("subscriptions", {
   meal_type: smallint().notNull(),   
   total_price: real().notNull(),
   allergies: text(),
-  status: varchar({ length: 50 }).notNull()
+  status: varchar({ length: 50 }).notNull(),
+  created_at: timestamp().notNull().defaultNow()
 });
 
 export const deliveryDaysTable = pgTable("delivery_days", {

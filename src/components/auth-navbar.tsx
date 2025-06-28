@@ -60,12 +60,20 @@ export default function AuthNavbar() {
                   My Subscriptions
                 </Link>
                 {session.user.role === UserRole.Admin && (
-                  <Link
-                    href="/admin"
-                    className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    Admin
-                  </Link>
+                  <>
+                    <Link
+                      href="/admin/dashboard"
+                      className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                    >
+                      Admin Dashboard
+                    </Link>
+                    <Link
+                      href="/admin"
+                      className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                    >
+                      Admin Panel
+                    </Link>
+                  </>
                 )}
                 <div className="relative">
                   <button
@@ -178,12 +186,20 @@ export default function AuthNavbar() {
                     My Subscriptions
                   </Link>
                   {session.user.role === UserRole.Admin && (
-                    <Link
-                      href="/admin"
-                      className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                    >
-                      Admin
-                    </Link>
+                    <>
+                      <Link
+                        href="/admin/dashboard"
+                        className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
+                      >
+                        Admin Dashboard
+                      </Link>
+                      <Link
+                        href="/admin"
+                        className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
+                      >
+                        Admin Panel
+                      </Link>
+                    </>
                   )}
                   <div className="border-t border-gray-200 pt-4">
                     <div className="px-3 py-2 text-sm text-gray-500">
