@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Subscription {
   id: number;
@@ -36,16 +36,97 @@ export default function CancelSubscriptionModal({
 }: CancelSubscriptionModalProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [csrfToken, setCsrfToken] = useState<string>("");
+
+  // Fetch CSRF token when modal opens
+  useEffect(() => {
+    const fetchCsrfToken = async () => {
+      try {
+        const response = await fetch('/api/auth/csrf-token', {
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setCsrfToken(data.csrfToken);
+        }
+      } catch (error) {
+        console.error('Failed to fetch CSRF token:', error);
+      }
+    };
+
+    if (isOpen) {
+      fetchCsrfToken();
+    }
+  }, [isOpen]);
+
+  // Helper function to get valid CSRF token
+  const getValidCSRFToken = async (): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/auth/csrf-token?refresh=true', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCsrfToken(data.csrfToken);
+        console.log("CSRF token refreshed successfully");
+        return data.csrfToken;
+      } else {
+        console.error('Failed to refresh CSRF token:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error refreshing CSRF token:', error);
+      return null;
+    }
+  };
 
   const handleCancel = async () => {
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      // Get a valid CSRF token (refresh if needed)
+      let currentCsrfToken = csrfToken;
+      
+      if (!currentCsrfToken) {
+        console.log("No CSRF token available, fetching new one...");
+        const newToken = await getValidCSRFToken();
+        if (!newToken) {
+          throw new Error("Failed to get security token");
+        }
+        currentCsrfToken = newToken;
+      }
+
+      // Helper function to make the API request
+      const makeRequest = async (token: string) => {
+        return await fetch(`/api/subscriptions/${subscription.id}`, {
+          method: "DELETE",
+          headers: {
+            "x-csrf-token": token,
+          },
+          credentials: "include",
+        });
+      };
+
+      // Try the request with current token
+      let response = await makeRequest(currentCsrfToken);
+      
+      // If CSRF token expired, refresh and retry once
+      if (response.status === 403) {
+        const result = await response.json();
+        if (result.error?.includes('CSRF token expired')) {
+          console.log("CSRF token expired, refreshing...");
+          const newToken = await getValidCSRFToken();
+          
+          if (newToken) {
+            console.log("Retrying with fresh CSRF token...");
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error("Failed to refresh security token");
+          }
+        }
+      }
 
       if (response.ok) {
         onCancel();
@@ -55,7 +136,7 @@ export default function CancelSubscriptionModal({
         setError(data.error || "Failed to cancel subscription");
       }
     } catch (error) {
-      setError("An error occurred while cancelling subscription");
+      setError(error instanceof Error ? error.message : "An error occurred while cancelling subscription");
       console.error("Error cancelling subscription:", error);
     } finally {
       setIsLoading(false);

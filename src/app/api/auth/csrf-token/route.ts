@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import { generateCSRFForUser, securityHeaders, applyRateLimit } from '@/lib/csrf';
+import { generateCSRFForUser, refreshCSRFToken, securityHeaders, applyRateLimit } from '@/lib/csrf';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,11 +22,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Generate CSRF token for the user
-    const csrfToken = generateCSRFForUser(session.user.id);
+    // Check if this is a refresh request
+    const refresh = request.nextUrl.searchParams.get('refresh') === 'true';
+    
+    // Generate or refresh CSRF token for the user
+    const csrfToken = refresh 
+      ? refreshCSRFToken(session.user.id)
+      : generateCSRFForUser(session.user.id);
 
     return NextResponse.json(
-      { csrfToken },
+      { csrfToken, refreshed: refresh },
       { headers: securityHeaders() }
     );
 

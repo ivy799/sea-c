@@ -110,10 +110,12 @@ export default function EditSubscriptionModal({
   useEffect(() => {
     const fetchCsrfToken = async () => {
       try {
-        const response = await fetch('/api/auth/csrf-token');
+        const response = await fetch('/api/auth/csrf-token', {
+          credentials: 'include'
+        });
         if (response.ok) {
           const data = await response.json();
-          setCsrfToken(data.token);
+          setCsrfToken(data.csrfToken); // Fixed: was data.token
         }
       } catch (error) {
         console.error('Failed to fetch CSRF token:', error);
@@ -124,6 +126,28 @@ export default function EditSubscriptionModal({
       fetchCsrfToken();
     }
   }, [isOpen]);
+
+  // Helper function to get valid CSRF token
+  const getValidCSRFToken = async (): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/auth/csrf-token?refresh=true', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCsrfToken(data.csrfToken);
+        console.log("CSRF token refreshed successfully");
+        return data.csrfToken;
+      } else {
+        console.error('Failed to refresh CSRF token:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error refreshing CSRF token:', error);
+      return null;
+    }
+  };
 
   // Fetch meal plans
   useEffect(() => {
@@ -200,23 +224,57 @@ export default function EditSubscriptionModal({
     }
 
     try {
+      // Get a valid CSRF token (refresh if needed)
+      let currentCsrfToken = csrfToken;
+      
+      if (!currentCsrfToken) {
+        console.log("No CSRF token available, fetching new one...");
+        const newToken = await getValidCSRFToken();
+        if (!newToken) {
+          throw new Error("Failed to get security token");
+        }
+        currentCsrfToken = newToken;
+      }
+
       const totalPrice = calculateTotalPrice();
       
-      const response = await fetch(`/api/subscriptions/${subscription.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-csrf-token": csrfToken,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          planId: selectedPlanId,
-          mealTypes,
-          deliveryDays,
-          allergies: allergies.trim() || null,
-          totalPrice,
-        }),
-      });
+      // Helper function to make the API request
+      const makeRequest = async (token: string) => {
+        return await fetch(`/api/subscriptions/${subscription.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-csrf-token": token,
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            planId: selectedPlanId,
+            mealTypes,
+            deliveryDays,
+            allergies: allergies.trim() || null,
+            totalPrice,
+          }),
+        });
+      };
+
+      // Try the request with current token
+      let response = await makeRequest(currentCsrfToken);
+      
+      // If CSRF token expired, refresh and retry once
+      if (response.status === 403) {
+        const result = await response.json();
+        if (result.error?.includes('CSRF token expired')) {
+          console.log("CSRF token expired, refreshing...");
+          const newToken = await getValidCSRFToken();
+          
+          if (newToken) {
+            console.log("Retrying with fresh CSRF token...");
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error("Failed to refresh security token");
+          }
+        }
+      }
 
       if (response.ok) {
         onUpdate();
@@ -226,7 +284,7 @@ export default function EditSubscriptionModal({
         setError(data.error || "Failed to update subscription");
       }
     } catch (error) {
-      setError("An error occurred while updating subscription");
+      setError(error instanceof Error ? error.message : "An error occurred while updating subscription");
       console.error("Error updating subscription:", error);
     } finally {
       setIsLoading(false);

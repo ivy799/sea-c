@@ -63,6 +63,7 @@ export default function SubscriptionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mealPlans, setMealPlans] = useState<MealPlan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
+  const [csrfToken, setCsrfToken] = useState<string>("");
 
   // Fetch meal plans on component mount
   useEffect(() => {
@@ -102,6 +103,52 @@ export default function SubscriptionForm() {
 
     fetchMealPlans();
   }, []);
+
+  // Fetch CSRF token when session is available
+  useEffect(() => {
+    const fetchCSRFToken = async () => {
+      if (session?.user) {
+        try {
+          const response = await fetch('/api/auth/csrf-token', {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const data = await response.json();
+            setCsrfToken(data.csrfToken);
+            console.log("CSRF token fetched successfully");
+          } else {
+            console.error('Failed to fetch CSRF token:', response.status);
+          }
+        } catch (error) {
+          console.error('Error fetching CSRF token:', error);
+        }
+      }
+    };
+
+    fetchCSRFToken();
+  }, [session]);
+
+  // Helper function to fetch or refresh CSRF token
+  const getValidCSRFToken = async (): Promise<string | null> => {
+    try {
+      const response = await fetch('/api/auth/csrf-token?refresh=true', {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCsrfToken(data.csrfToken);
+        console.log("CSRF token refreshed successfully");
+        return data.csrfToken;
+      } else {
+        console.error('Failed to refresh CSRF token:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error refreshing CSRF token:', error);
+      return null;
+    }
+  };
 
   // Calculate total price
   const calculateTotalPrice = () => {
@@ -208,6 +255,18 @@ export default function SubscriptionForm() {
     setIsSubmitting(true);
 
     try {
+      // Get a valid CSRF token (refresh if needed)
+      let currentCsrfToken = csrfToken;
+      
+      if (!currentCsrfToken) {
+        console.log("No CSRF token available, fetching new one...");
+        const newToken = await getValidCSRFToken();
+        if (!newToken) {
+          throw new Error("Failed to get security token");
+        }
+        currentCsrfToken = newToken;
+      }
+
       const subscriptionData = {
         name: formData.name,
         phone: formData.phone,
@@ -219,21 +278,50 @@ export default function SubscriptionForm() {
       };
 
       console.log("Sending subscription data:", subscriptionData);
+      console.log("Using CSRF token:", currentCsrfToken ? "Present" : "Missing");
 
-      const response = await fetch('/api/subscriptions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies for authentication
-        body: JSON.stringify(subscriptionData),
-      });
+      // Helper function to make the API request
+      const makeRequest = async (token: string) => {
+        return await fetch('/api/subscriptions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': token,
+          },
+          credentials: 'include',
+          body: JSON.stringify(subscriptionData),
+        });
+      };
+
+      // Try the request with current token
+      let response = await makeRequest(currentCsrfToken);
+      
+      // If CSRF token expired, refresh and retry once
+      if (response.status === 403) {
+        const result = await response.json();
+        if (result.error?.includes('CSRF token expired')) {
+          console.log("CSRF token expired, refreshing...");
+          const newToken = await getValidCSRFToken();
+          
+          if (newToken) {
+            console.log("Retrying with fresh CSRF token...");
+            response = await makeRequest(newToken);
+          } else {
+            throw new Error("Failed to refresh security token");
+          }
+        }
+      }
 
       const result = await response.json();
+      console.log("Subscription response:", result);
 
       if (!response.ok) {
         if (response.status === 401) {
           alert("Authentication error: Please log out and log in again.");
+          return;
+        }
+        if (response.status === 403 && result.error?.includes('CSRF')) {
+          alert("Security token error. Please refresh the page and try again.");
           return;
         }
         throw new Error(result.error || 'Failed to submit subscription');
@@ -252,7 +340,8 @@ export default function SubscriptionForm() {
       });
     } catch (error) {
       console.error('Subscription submission error:', error);
-      alert(error instanceof Error ? error.message : "There was an error submitting your subscription. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "There was an error submitting your subscription. Please try again.";
+      alert(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -294,6 +383,16 @@ export default function SubscriptionForm() {
                       <li key={field}><strong>{field}:</strong> {error}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {/* CSRF Debug Section */}
+              {session && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="text-sm font-semibold text-blue-800 mb-2">🔒 Security Status:</h3>
+                  <p className="text-blue-700 text-sm">
+                    CSRF Token: {csrfToken ? "✅ Ready" : "❌ Not loaded"}
+                  </p>
                 </div>
               )}
 

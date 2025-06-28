@@ -42,10 +42,21 @@ export function generateCSRFForUser(userId: string): string {
   
   csrfTokens.set(userId, {
     token,
-    expires: Date.now() + 60 * 60 * 1000 // 1 hour
+    expires: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
   });
 
   return token;
+}
+
+export function refreshCSRFToken(userId: string): string | null {
+  const existingToken = csrfTokens.get(userId);
+  if (existingToken && existingToken.expires > Date.now()) {
+    // Extend the expiration time
+    existingToken.expires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+    return existingToken.token;
+  }
+  // Generate new token if expired or doesn't exist
+  return generateCSRFForUser(userId);
 }
 
 export function applyRateLimit(request: NextRequest, type: 'auth' | 'general' = 'general'): boolean {
