@@ -58,11 +58,20 @@ export async function POST() {
 
 export async function GET() {
   try {
+    console.log("Fetching meal plans from database...");
     const mealPlans = await db.select().from(mealPlansTable);
+    
+    console.log("Meal plans fetched:", mealPlans);
     
     return NextResponse.json({
       success: true,
-      data: mealPlans
+      data: mealPlans.map(plan => ({
+        id: plan.id,
+        name: plan.name,
+        price_per_meal: plan.price_per_meal,
+        description: plan.description,
+        image: plan.image
+      }))
     });
 
   } catch (error) {
@@ -70,6 +79,7 @@ export async function GET() {
     
     return NextResponse.json(
       { 
+        success: false,
         error: 'Failed to fetch meal plans', 
         details: error instanceof Error ? error.message : 'Unknown error' 
       },

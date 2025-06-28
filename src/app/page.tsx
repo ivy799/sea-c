@@ -5,7 +5,7 @@ import { db } from "../db/client";
 import { testimoniesTable, usersTable } from "../db/schema";
 import { eq } from "drizzle-orm";
 import TestimonialCarousel from "./components/testimonial-carousel";
-import NavbarComponent from "./components/navbar-components";
+import AuthNavbar from "@/components/auth-navbar";
 
 export default async function Home() {
   // Fetch testimonials for home page
@@ -22,7 +22,7 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50">
-      <NavbarComponent />
+      <AuthNavbar />
       
       {/* Hero Section */}
       <section className="relative overflow-hidden">

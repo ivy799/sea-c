@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 interface FormData {
@@ -37,6 +38,8 @@ const daysOfWeek = [
 ];
 
 export default function SubscriptionForm() {
+  const { data: session } = useSession();
+  
   const [formData, setFormData] = useState<FormData>({
     name: "",
     phone: "",
@@ -45,6 +48,16 @@ export default function SubscriptionForm() {
     deliveryDays: [],
     allergies: "",
   });
+
+  // Update form when session loads
+  useEffect(() => {
+    if (session?.user) {
+      setFormData(prev => ({
+        ...prev,
+        name: session.user.name || ""
+      }));
+    }
+  }, [session]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,31 +82,56 @@ export default function SubscriptionForm() {
     const fetchMealPlans = async () => {
       try {
         console.log("Fetching meal plans..."); // Debug log
-        const response = await fetch('/api/meal-plans');
-        const result = await response.json();
+        const response = await fetch('/api/meal-plans', {
+          credentials: 'include'
+        });
         
+        console.log("Response status:", response.status);
+        console.log("Response ok:", response.ok);
+        
+        const result = await response.json();
         console.log("Meal plans response:", result); // Debug log
         
-        if (result.success) {
+        if (result.success && result.data) {
           setMealPlans(result.data);
           console.log("Meal plans loaded:", result.data); // Debug log
         } else {
-          console.error('Failed to fetch meal plans:', result.error);
-          // Fallback to default plans if API fails
-          setMealPlans([
-            { id: 1, name: "Diet Plan", price_per_meal: 30000, description: "Perfect for weight management", image: null },
-            { id: 2, name: "Protein Plan", price_per_meal: 40000, description: "High-protein meals", image: null },
-            { id: 3, name: "Royal Plan", price_per_meal: 60000, description: "Premium meals", image: null },
-          ]);
+          console.error('API returned error:', result.error);
+          // Initialize meal plans via POST if GET fails
+          console.log("Attempting to initialize meal plans...");
+          const initResponse = await fetch('/api/meal-plans', {
+            method: 'POST',
+            credentials: 'include'
+          });
+          const initResult = await initResponse.json();
+          
+          if (initResult.success) {
+            console.log("Meal plans initialized, retrying fetch...");
+            // Retry fetch after initialization
+            const retryResponse = await fetch('/api/meal-plans', {
+              credentials: 'include'
+            });
+            const retryResult = await retryResponse.json();
+            
+            if (retryResult.success && retryResult.data) {
+              setMealPlans(retryResult.data);
+            } else {
+              throw new Error("Failed to fetch after initialization");
+            }
+          } else {
+            throw new Error(initResult.error || "Failed to initialize meal plans");
+          }
         }
       } catch (error) {
         console.error('Error fetching meal plans:', error);
         // Fallback to default plans
-        setMealPlans([
+        const fallbackPlans = [
           { id: 1, name: "Diet Plan", price_per_meal: 30000, description: "Perfect for weight management", image: null },
           { id: 2, name: "Protein Plan", price_per_meal: 40000, description: "High-protein meals", image: null },
           { id: 3, name: "Royal Plan", price_per_meal: 60000, description: "Premium meals", image: null },
-        ]);
+        ];
+        setMealPlans(fallbackPlans);
+        console.log("Using fallback meal plans:", fallbackPlans);
       } finally {
         setIsLoadingPlans(false);
       }
@@ -108,15 +146,31 @@ export default function SubscriptionForm() {
       return 0;
     }
 
+    // Guard clause to ensure mealPlans is an array
+    if (!Array.isArray(mealPlans) || mealPlans.length === 0) {
+      return 0;
+    }
+
     const selectedPlan = mealPlans.find(p => p.id.toString() === formData.plan);
     if (!selectedPlan) return 0;
 
+    // Formula: Total Price = (Plan Price) × (Number of Meal Types) × (Number of Delivery Days) × 4.3
     const planPrice = selectedPlan.price_per_meal;
     const numMealTypes = formData.mealTypes.length;
     const numDeliveryDays = formData.deliveryDays.length;
-    const multiplier = 4.3; // Monthly multiplier
+    const monthlyMultiplier = 4.3; // Monthly multiplier (weeks per month)
 
-    return planPrice * numMealTypes * numDeliveryDays * multiplier;
+    const totalPrice = planPrice * numMealTypes * numDeliveryDays * monthlyMultiplier;
+    
+    console.log("Price calculation:", {
+      planPrice,
+      numMealTypes,
+      numDeliveryDays,
+      monthlyMultiplier,
+      totalPrice
+    });
+
+    return totalPrice;
   };
 
   // Format currency
@@ -193,6 +247,12 @@ export default function SubscriptionForm() {
     e.preventDefault();
     
     console.log("Form submitted!", formData); // Debug log
+    console.log("Session data:", session);
+    
+    if (!session) {
+      alert("Please log in to create a subscription");
+      return;
+    }
     
     if (!validateForm()) {
       console.log("Form validation failed", errors); // Debug log
@@ -219,6 +279,7 @@ export default function SubscriptionForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify(subscriptionData),
       });
 
@@ -226,14 +287,18 @@ export default function SubscriptionForm() {
       console.log("API Response:", result); // Debug log
 
       if (!response.ok) {
+        if (response.status === 401) {
+          alert("Authentication error: Please log out and log in again.");
+          return;
+        }
         throw new Error(result.error || 'Failed to submit subscription');
       }
 
       alert(result.message || "Subscription submitted successfully! We will contact you soon.");
       
-      // Reset form
+      // Reset form but keep the name from session
       setFormData({
-        name: "",
+        name: session?.user?.name || "",
         phone: "",
         plan: "",
         mealTypes: [],
@@ -262,6 +327,19 @@ export default function SubscriptionForm() {
             </div>
 
             <div className="p-8 space-y-8">
+              {/* Session Status Indicator */}
+              <div className={`border rounded-lg p-4 ${session ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center">
+                  <span className={`text-sm font-medium ${session ? 'text-green-800' : 'text-red-800'}`}>
+                    {session ? (
+                      <>✅ Logged in as: {session.user?.name || session.user?.email}</>
+                    ) : (
+                      <>❌ Not logged in - Please log in to create a subscription</>
+                    )}
+                  </span>
+                </div>
+              </div>
+
               {/* Debug Section */}
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                 <h3 className="text-lg font-semibold text-yellow-800 mb-2">🔧 Debug Panel</h3>
@@ -277,6 +355,8 @@ export default function SubscriptionForm() {
                     type="button"
                     onClick={() => console.log("Current form data:", formData)}
                     className="bg-blue-600 text-white px-4 py-2 rounded text-sm ml-2"
+                  >
+                    Log Form Data
                   </button>
                   <button
                     type="button"
@@ -307,7 +387,7 @@ export default function SubscriptionForm() {
               <div className="space-y-6">
                 <h3 className="text-2xl font-bold text-gray-900">Personal Information</h3>
                 
-                {/* Name Field */}
+                {/* Name Field - Read Only for Authenticated Users */}
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
                     Full Name *
@@ -316,13 +396,11 @@ export default function SubscriptionForm() {
                     type="text"
                     id="name"
                     value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
-                      errors.name ? "border-red-500" : "border-gray-300"
-                    }`}
-                    placeholder="Enter your full name"
+                    readOnly
+                    className="w-full px-4 py-3 border rounded-xl bg-gray-50 text-gray-700 border-gray-300 cursor-not-allowed"
+                    placeholder="Your name from account"
                   />
-                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                  <p className="text-gray-500 text-sm mt-1">Name is taken from your account</p>
                 </div>
 
                 {/* Phone Field */}
@@ -474,22 +552,28 @@ export default function SubscriptionForm() {
                   <h3 className="text-2xl font-bold text-gray-900 mb-4">Price Calculation</h3>
                   <div className="space-y-2 text-gray-700">
                     <div className="flex justify-between">
-                      <span>Plan Price:</span>
-                      <span>{formatCurrency(mealPlans.find(p => p.id.toString() === formData.plan)?.price_per_meal || 0)} per meal</span>
+                      <span>Plan Price per Meal:</span>
+                      <span>{formatCurrency((mealPlans || []).find(p => p.id.toString() === formData.plan)?.price_per_meal || 0)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Meal Types Selected:</span>
                       <span>{formData.mealTypes.length} type(s)</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Delivery Days:</span>
+                      <span>Delivery Days Selected:</span>
                       <span>{formData.deliveryDays.length} day(s)</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Monthly Multiplier:</span>
-                      <span>4.3</span>
+                      <span>4.3 (weeks per month)</span>
                     </div>
                     <hr className="my-3" />
+                    <div className="bg-blue-50 p-3 rounded-lg mb-3">
+                      <p className="text-sm font-medium text-blue-800 mb-1">Formula:</p>
+                      <p className="text-sm text-blue-700">
+                        {formatCurrency((mealPlans || []).find(p => p.id.toString() === formData.plan)?.price_per_meal || 0)} × {formData.mealTypes.length} × {formData.deliveryDays.length} × 4.3
+                      </p>
+                    </div>
                     <div className="flex justify-between text-xl font-bold text-orange-600">
                       <span>Total Monthly Price:</span>
                       <span>{formatCurrency(totalPrice)}</span>

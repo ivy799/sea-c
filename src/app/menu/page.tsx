@@ -3,7 +3,7 @@ import { db } from "../../db/client";
 import { mealPlansTable, testimoniesTable, usersTable } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import TestimonialsSection from "../components/testimonial-section";
-import NavbarComponent from "../components/navbar-components";
+import AuthNavbar from "@/components/auth-navbar";
 import MealPlansClient from "../components/meal-plans-client";
 
 export default async function MealPlansPage() {
@@ -24,7 +24,7 @@ export default async function MealPlansPage() {
 
     return (
         <main className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
-            <NavbarComponent />
+            <AuthNavbar />
             
             {/* Hero Section */}
             <section className="relative pt-20 pb-16 px-8">

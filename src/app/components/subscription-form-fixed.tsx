@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 
 interface FormData {
@@ -37,6 +38,8 @@ const daysOfWeek = [
 ];
 
 export default function SubscriptionForm() {
+  const { data: session } = useSession();
+  
   const [formData, setFormData] = useState<FormData>({
     name: "",
     phone: "",
@@ -45,6 +48,16 @@ export default function SubscriptionForm() {
     deliveryDays: [],
     allergies: "",
   });
+
+  // Update form when session loads
+  useEffect(() => {
+    if (session?.user) {
+      setFormData(prev => ({
+        ...prev,
+        name: session.user.name || ""
+      }));
+    }
+  }, [session]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,7 +69,9 @@ export default function SubscriptionForm() {
     const fetchMealPlans = async () => {
       console.log("Fetching meal plans...");
       try {
-        const response = await fetch('/api/meal-plans');
+        const response = await fetch('/api/meal-plans', {
+          credentials: 'include'
+        });
         const result = await response.json();
         console.log("Meal plans response:", result);
         
@@ -178,6 +193,12 @@ export default function SubscriptionForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Form submitted!");
+    console.log("Session data:", session);
+    
+    if (!session) {
+      alert("Please log in to create a subscription");
+      return;
+    }
     
     if (!validateForm()) {
       console.log("Form validation failed");
@@ -204,20 +225,25 @@ export default function SubscriptionForm() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // Include cookies for authentication
         body: JSON.stringify(subscriptionData),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          alert("Authentication error: Please log out and log in again.");
+          return;
+        }
         throw new Error(result.error || 'Failed to submit subscription');
       }
 
       alert(result.message || "Subscription submitted successfully! We will contact you soon.");
       
-      // Reset form
+      // Reset form but keep the name from session
       setFormData({
-        name: "",
+        name: session?.user?.name || "",
         phone: "",
         plan: "",
         mealTypes: [],
@@ -246,6 +272,19 @@ export default function SubscriptionForm() {
             </div>
 
             <div className="p-8 space-y-8">
+              {/* Session Status Indicator */}
+              <div className={`border rounded-lg p-4 ${session ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <div className="flex items-center">
+                  <span className={`text-sm font-medium ${session ? 'text-green-800' : 'text-red-800'}`}>
+                    {session ? (
+                      <>✅ Logged in as: {session.user?.name || session.user?.email}</>
+                    ) : (
+                      <>❌ Not logged in - Please log in to create a subscription</>
+                    )}
+                  </span>
+                </div>
+              </div>
+
               {/* Debug Section - Show validation errors */}
               {Object.keys(errors).length > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -262,7 +301,7 @@ export default function SubscriptionForm() {
               <div className="space-y-6">
                 <h3 className="text-2xl font-bold text-gray-900">Personal Information</h3>
                 
-                {/* Name Field */}
+                {/* Name Field - Read Only for Authenticated Users */}
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
                     Full Name *
@@ -271,13 +310,11 @@ export default function SubscriptionForm() {
                     type="text"
                     id="name"
                     value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all duration-300 ${
-                      errors.name ? "border-red-500" : "border-gray-300"
-                    }`}
-                    placeholder="Enter your full name"
+                    readOnly
+                    className="w-full px-4 py-3 border rounded-xl bg-gray-50 text-gray-700 border-gray-300 cursor-not-allowed"
+                    placeholder="Your name from account"
                   />
-                  {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+                  <p className="text-gray-500 text-sm mt-1">Name is taken from your account</p>
                 </div>
 
                 {/* Phone Field */}

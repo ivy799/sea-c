@@ -1,10 +1,12 @@
-import NavbarComponent from "../components/navbar-components";
+import AuthNavbar from "@/components/auth-navbar";
+import ProtectedRoute from "@/components/protected-route";
 import SubscriptionForm from "../components/subscription-form-fixed";
 
 export default function SubscriptionPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
-      <NavbarComponent />
+    <ProtectedRoute>
+      <main className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
+        <AuthNavbar />
       
       {/* Hero Section */}
       <section className="relative pt-20 pb-16 px-8">
@@ -66,5 +68,6 @@ export default function SubscriptionPage() {
         </div>
       </section>
     </main>
+    </ProtectedRoute>
   );
 }

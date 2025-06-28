@@ -40,6 +40,12 @@ export const deliveryDaysTable = pgTable("delivery_days", {
   day_of_the_week: smallint().notNull() 
 });
 
+export const subscriptionMealTypesTable = pgTable("subscription_meal_types", {
+  id: integer().primaryKey().generatedAlwaysAsIdentity(),
+  subscription_id: integer().notNull().references(() => subscriptionsTable.id),
+  meal_type: smallint().notNull()
+});
+
 export const pausedSubscriptionsTable = pgTable("paused_subscriptions", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
   subscription_id: integer().notNull().references(() => subscriptionsTable.id),

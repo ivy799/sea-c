@@ -1,7 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { db } from '@/db/client';
-import { subscriptionsTable, deliveryDaysTable, usersTable, mealPlansTable } from '@/db/schema';
+import { subscriptionsTable, deliveryDaysTable, subscriptionMealTypesTable, mealPlansTable, usersTable } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+
+// Add retry function for database operations
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+      
+      // Check if it's a connection timeout error
+      const isTimeoutError = error instanceof Error && 
+        (error.message.includes('timeout') || 
+         error.message.includes('connect') ||
+         error.message.includes('ECONNRESET'));
+      
+      if (isTimeoutError) {
+        console.log(`Database operation failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2; // Exponential backoff
+      } else {
+        throw error; // Non-timeout errors should not be retried
+      }
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
 
 // Mapping for meal types
 const MEAL_TYPE_MAP = {
@@ -21,13 +55,6 @@ const DAY_OF_WEEK_MAP = {
   'saturday': 6,
 } as const;
 
-// Mapping for plan names to IDs - will be dynamically determined from database
-const getPlanIdFromDatabase = async (planId: string) => {
-  const plans = await db.select().from(mealPlansTable);
-  const plan = plans.find(p => p.id.toString() === planId);
-  return plan?.id;
-};
-
 interface SubscriptionRequest {
   name: string;
   phone: string;
@@ -40,7 +67,24 @@ interface SubscriptionRequest {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("Subscription API called");
+    
+    // Check authentication
+    const session = await getServerSession(authOptions);
+    console.log("Session data:", session);
+    
+    if (!session || !session.user) {
+      console.log("Authentication failed - no session");
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    console.log("User authenticated:", session.user);
+
     const body: SubscriptionRequest = await request.json();
+    console.log("Request body:", body);
     
     // Validate required fields
     if (!body.name || !body.phone || !body.plan || !body.mealTypes.length || !body.deliveryDays.length) {
@@ -50,92 +94,106 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. First, check if user exists or create new user
-    let user = await db
+    // Use the authenticated user's ID instead of creating/finding by phone
+    const userId = parseInt(session.user.id);
+
+    // Verify the user exists and update their info if necessary
+    const user = await db
       .select()
       .from(usersTable)
-      .where(eq(usersTable.phone_number, body.phone))
+      .where(eq(usersTable.id, userId))
       .limit(1);
 
-    let userId: number;
-
     if (user.length === 0) {
-      // Create new user
-      const newUser = await db
-        .insert(usersTable)
-        .values({
-          full_name: body.name,
-          email: `${body.phone}@temp.com`, // Temporary email, you might want to collect this
-          password: 'temp_password', // You'll need to handle password properly
-          phone_number: body.phone,
-          role: 1, // User role
-        })
-        .returning({ id: usersTable.id });
-      
-      userId = newUser[0].id;
-    } else {
-      userId = user[0].id;
-      
-      // Update user name if different
-      if (user[0].full_name !== body.name) {
-        await db
-          .update(usersTable)
-          .set({ full_name: body.name })
-          .where(eq(usersTable.id, userId));
-      }
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    // 2. Get the meal plan ID from the database
-    const mealPlanId = await getPlanIdFromDatabase(body.plan);
-    if (!mealPlanId) {
+    // Update user phone if provided and different
+    if (body.phone && body.phone !== user[0].phone_number) {
+      await db
+        .update(usersTable)
+        .set({ phone_number: body.phone })
+        .where(eq(usersTable.id, userId));
+    }
+
+    // 2. Get the meal plan from the database
+    const mealPlan = await db
+      .select()
+      .from(mealPlansTable)
+      .where(eq(mealPlansTable.id, parseInt(body.plan)))
+      .limit(1);
+    
+    if (mealPlan.length === 0) {
       throw new Error('Invalid plan selected');
     }
 
-    // 3. Create subscription entries for each meal type
-    const subscriptionIds: number[] = [];
-    
-    for (const mealType of body.mealTypes) {
+    // 3. Validate meal types
+    const mealTypeNumbers = body.mealTypes.map(mealType => {
       const mealTypeId = MEAL_TYPE_MAP[mealType as keyof typeof MEAL_TYPE_MAP];
       if (mealTypeId === undefined) {
         throw new Error(`Invalid meal type: ${mealType}`);
       }
+      return mealTypeId;
+    });
 
-      // Calculate price for this specific meal type combination
-      const pricePerMealType = body.totalPrice / body.mealTypes.length;
-
-      const subscription = await db
-        .insert(subscriptionsTable)
-        .values({
-          user_id: userId,
-          meal_plan_id: mealPlanId,
-          meal_type: mealTypeId,
-          total_price: pricePerMealType,
-          allergies: body.allergies || null,
-          status: 'active',
-        })
-        .returning({ id: subscriptionsTable.id });
-
-      subscriptionIds.push(subscription[0].id);
+    // 4. Calculate and validate total price
+    // Formula: Total Price = (Plan Price) × (Number of Meal Types) × (Number of Delivery Days) × 4.3
+    const monthlyMultiplier = 4.3; // weeks per month
+    const expectedPrice = mealPlan[0].price_per_meal * body.mealTypes.length * body.deliveryDays.length * monthlyMultiplier;
+    
+    console.log("Price calculation check:", {
+      planPrice: mealPlan[0].price_per_meal,
+      mealTypesCount: body.mealTypes.length,
+      deliveryDaysCount: body.deliveryDays.length,
+      monthlyMultiplier,
+      expectedPrice,
+      receivedPrice: body.totalPrice
+    });
+    
+    if (Math.abs(body.totalPrice - expectedPrice) > 1) {
+      throw new Error(`Price mismatch. Expected: ${expectedPrice}, Received: ${body.totalPrice}`);
     }
 
-    // 4. Create delivery day entries for each subscription
-    for (const subscriptionId of subscriptionIds) {
-      for (const day of body.deliveryDays) {
-        const dayOfWeek = DAY_OF_WEEK_MAP[day as keyof typeof DAY_OF_WEEK_MAP];
-        if (dayOfWeek === undefined) {
-          throw new Error(`Invalid delivery day: ${day}`);
-        }
+    // 5. Create single subscription
+    const subscription = await db
+      .insert(subscriptionsTable)
+      .values({
+        user_id: userId,
+        meal_plan_id: parseInt(body.plan),
+        meal_type: mealTypeNumbers[0], // Store first meal type for compatibility
+        total_price: expectedPrice,
+        allergies: JSON.stringify({
+          allergies: body.allergies || null,
+          meal_types: mealTypeNumbers // Store all meal types here
+        }),
+        status: 'active',
+      })
+      .returning({ id: subscriptionsTable.id });
 
-        await db.insert(deliveryDaysTable).values({
-          subscription_id: subscriptionId,
-          day_of_the_week: dayOfWeek,
-        });
+    const subscriptionId = subscription[0].id;
+
+    // 6. TODO: Create meal type entries when table is ready
+    // For now, we store only the first meal type in the main subscription table
+
+    // 7. Create delivery day entries
+    for (const day of body.deliveryDays) {
+      const dayOfWeek = DAY_OF_WEEK_MAP[day as keyof typeof DAY_OF_WEEK_MAP];
+      if (dayOfWeek === undefined) {
+        throw new Error(`Invalid delivery day: ${day}`);
       }
+
+      await db.insert(deliveryDaysTable).values({
+        subscription_id: subscriptionId,
+        day_of_the_week: dayOfWeek,
+      });
     }
 
     const result = {
       userId,
-      subscriptionIds,
+      subscriptionId,
       message: 'Subscription created successfully',
     };
 
