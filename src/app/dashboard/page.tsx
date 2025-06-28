@@ -39,7 +39,7 @@ const DAY_NAMES = {
   6: "Saturday"
 };
 
-export default function MySubscriptionsPage() {
+export default function DashboardPage() {
   const { data: session } = useSession();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -99,42 +99,17 @@ export default function MySubscriptionsPage() {
     setCancellingSubscription(subscription);
   };
 
-  const handleSubscriptionUpdated = () => {
-    setSuccessMessage("Subscription updated successfully!");
-    setTimeout(() => setSuccessMessage(""), 5000);
-    fetchSubscriptions();
-  };
-
-  const handleSubscriptionCancelled = () => {
-    setSuccessMessage("Subscription cancelled successfully!");
-    setTimeout(() => setSuccessMessage(""), 5000);
-    fetchSubscriptions();
-  };
-
   const handlePauseSubscription = (subscription: Subscription) => {
     setPausingSubscription(subscription);
   };
 
-  const handleSubscriptionPaused = () => {
-    setSuccessMessage("Subscription paused successfully!");
-    setTimeout(() => setSuccessMessage(""), 5000);
-    fetchSubscriptions();
-  };
-
   const handleResumeSubscription = async (subscriptionId: number) => {
     try {
-      // Get CSRF token
       const csrfResponse = await fetch('/api/auth/csrf-token', {
         credentials: 'include'
       });
-      
-      if (!csrfResponse.ok) {
-        throw new Error('Failed to get security token');
-      }
-      
       const { csrfToken } = await csrfResponse.json();
 
-      // Resume subscription
       const response = await fetch(`/api/subscriptions/${subscriptionId}/pause`, {
         method: 'DELETE',
         headers: {
@@ -151,13 +126,29 @@ export default function MySubscriptionsPage() {
       } else {
         const errorData = await response.json();
         setError(errorData.error || "Failed to resume subscription");
-        setTimeout(() => setError(""), 5000);
       }
     } catch (err) {
       console.error("Error resuming subscription:", err);
       setError("An error occurred while resuming subscription");
-      setTimeout(() => setError(""), 5000);
     }
+  };
+
+  const handleSubscriptionUpdated = () => {
+    setSuccessMessage("Subscription updated successfully!");
+    setTimeout(() => setSuccessMessage(""), 5000);
+    fetchSubscriptions();
+  };
+
+  const handleSubscriptionCancelled = () => {
+    setSuccessMessage("Subscription cancelled successfully!");
+    setTimeout(() => setSuccessMessage(""), 5000);
+    fetchSubscriptions();
+  };
+
+  const handleSubscriptionPaused = () => {
+    setSuccessMessage("Subscription paused successfully!");
+    setTimeout(() => setSuccessMessage(""), 5000);
+    fetchSubscriptions();
   };
 
   const isSubscriptionActive = (status: string, isPaused?: boolean) => {
@@ -168,6 +159,14 @@ export default function MySubscriptionsPage() {
     return status.toLowerCase() === "paused" || isPaused;
   };
 
+  // Calculate dashboard stats
+  const totalSubscriptions = subscriptions.length;
+  const activeSubscriptions = subscriptions.filter(sub => isSubscriptionActive(sub.status, sub.is_paused)).length;
+  const pausedSubscriptions = subscriptions.filter(sub => isSubscriptionPaused(sub.status, sub.is_paused)).length;
+  const totalMonthlySpending = subscriptions
+    .filter(sub => isSubscriptionActive(sub.status, sub.is_paused))
+    .reduce((sum, sub) => sum + sub.total_price, 0);
+
   if (isLoading) {
     return (
       <ProtectedRoute>
@@ -176,7 +175,7 @@ export default function MySubscriptionsPage() {
           <div className="container mx-auto px-4 py-8">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-600">Loading your subscriptions...</p>
+              <p className="mt-4 text-gray-600">Loading your dashboard...</p>
             </div>
           </div>
         </div>
@@ -190,8 +189,8 @@ export default function MySubscriptionsPage() {
         <AuthNavbar />
         
         <div className="container mx-auto px-4 py-8">
-          <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold text-gray-900 mb-8">My Subscriptions</h1>
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-3xl font-bold text-gray-900 mb-8">Subscription Dashboard</h1>
             
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
@@ -205,6 +204,66 @@ export default function MySubscriptionsPage() {
               </div>
             )}
 
+            {/* Dashboard Overview Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 font-semibold text-sm">📊</span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Subscriptions</p>
+                    <p className="text-2xl font-semibold text-gray-900">{totalSubscriptions}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                      <span className="text-green-600 font-semibold text-sm">✅</span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Active Subscriptions</p>
+                    <p className="text-2xl font-semibold text-gray-900">{activeSubscriptions}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <span className="text-yellow-600 font-semibold text-sm">⏸️</span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Paused Subscriptions</p>
+                    <p className="text-2xl font-semibold text-gray-900">{pausedSubscriptions}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                      <span className="text-purple-600 font-semibold text-sm">💰</span>
+                    </div>
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Monthly Spending</p>
+                    <p className="text-2xl font-semibold text-gray-900">Rp{totalMonthlySpending.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Subscriptions List */}
             {subscriptions.length === 0 ? (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 text-center">
                 <div className="text-gray-400 text-6xl mb-4">🍽️</div>
@@ -221,6 +280,7 @@ export default function MySubscriptionsPage() {
               </div>
             ) : (
               <div className="space-y-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Your Subscriptions</h2>
                 {subscriptions.map((subscription) => (
                   <div
                     key={subscription.id}
@@ -298,7 +358,7 @@ export default function MySubscriptionsPage() {
                             onClick={() => handleEditSubscription(subscription)}
                             className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors"
                           >
-                            Modify Subscription
+                            Edit Subscription
                           </button>
                           <button 
                             onClick={() => handlePauseSubscription(subscription)}
@@ -330,9 +390,9 @@ export default function MySubscriptionsPage() {
                           </button>
                         </>
                       )}
-                      {!isSubscriptionActive(subscription.status, subscription.is_paused) && !isSubscriptionPaused(subscription.status, subscription.is_paused) && (
+                      {subscription.status.toLowerCase() === 'cancelled' && (
                         <div className="text-sm text-gray-500 italic">
-                          This subscription is {subscription.status} and cannot be modified.
+                          This subscription has been cancelled and cannot be modified.
                         </div>
                       )}
                     </div>

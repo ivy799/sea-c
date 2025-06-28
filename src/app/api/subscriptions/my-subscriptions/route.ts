@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { db } from '@/db/client';
-import { subscriptionsTable, deliveryDaysTable, mealPlansTable } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { subscriptionsTable, deliveryDaysTable, mealPlansTable, pausedSubscriptionsTable } from '@/db/schema';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { applyRateLimit, securityHeaders } from '@/lib/csrf';
 
 export async function GET(request: NextRequest) {
@@ -52,6 +52,23 @@ export async function GET(request: NextRequest) {
           .from(deliveryDaysTable)
           .where(eq(deliveryDaysTable.subscription_id, subscription.id));
 
+        // Get pause information - look for any pause record for this subscription
+        const pauseInfo = await db
+          .select({
+            start_date: pausedSubscriptionsTable.start_date,
+            end_date: pausedSubscriptionsTable.end_date
+          })
+          .from(pausedSubscriptionsTable)
+          .where(
+            eq(pausedSubscriptionsTable.subscription_id, subscription.id)
+          )
+          .orderBy(pausedSubscriptionsTable.id)
+          .limit(1);
+
+        // Check if pause is currently active based on subscription status
+        const isPaused = subscription.status === 'paused';
+        const pausedUntil = isPaused && pauseInfo[0]?.end_date ? pauseInfo[0].end_date : null;
+
         // Get meal types (for now, try to parse from allergies field, fallback to single meal_type)
         let mealTypes = [subscription.meal_type.toString()];
         let actualAllergies = subscription.allergies;
@@ -73,7 +90,9 @@ export async function GET(request: NextRequest) {
           ...subscription,
           allergies: actualAllergies,
           delivery_days: deliveryDays.map(d => d.day_of_the_week.toString()),
-          meal_types: mealTypes
+          meal_types: mealTypes,
+          is_paused: isPaused,
+          paused_until: pausedUntil
         };
       })
     );

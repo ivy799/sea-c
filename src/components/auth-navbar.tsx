@@ -42,6 +42,12 @@ export default function AuthNavbar() {
             ) : session ? (
               <>
                 <Link
+                  href="/dashboard"
+                  className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
+                >
+                  Dashboard
+                </Link>
+                <Link
                   href="/subscription"
                   className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
@@ -153,6 +159,12 @@ export default function AuthNavbar() {
               
               {session ? (
                 <>
+                  <Link
+                    href="/dashboard"
+                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
+                  >
+                    Dashboard
+                  </Link>
                   <Link
                     href="/subscription"
                     className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
