@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { db } from "../../db/client";
-import { mealPlansTable, testimoniesTable, usersTable } from "../../db/schema";
+import { mealPlansTable, testimoniesTable, usersTable, UserRole } from "../../db/schema";
 import { eq } from "drizzle-orm";
 import TestimonialsSection from "../components/testimonial-section";
 import AuthNavbar from "@/components/auth-navbar";
 import MealPlansClient from "../components/meal-plans-client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export default async function MealPlansPage() {
-    // Ambil data meal plans dari database
     const mealPlans = await db.select().from(mealPlansTable);
 
-    // Ambil data testimonials dengan join ke users table
     const testimonials = await db
         .select({
             id: testimoniesTable.id,
@@ -22,11 +22,14 @@ export default async function MealPlansPage() {
         .innerJoin(usersTable, eq(testimoniesTable.user_id, usersTable.id))
         .limit(10);
 
+    // Ambil session user di server
+    const session = await getServerSession(authOptions);
+    const isUser = session?.user?.role === UserRole.User;
+
     return (
         <main className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-red-50">
             <AuthNavbar />
             
-            {/* Hero Section */}
             <section className="relative pt-20 pb-16 px-8">
                 <div className="container mx-auto text-center">
                     <div className="max-w-4xl mx-auto">
@@ -55,10 +58,8 @@ export default async function MealPlansPage() {
                 </div>
             </section>
 
-            {/* Meal Plans Client Component */}
             <MealPlansClient mealPlans={mealPlans} />
 
-            {/* Call to Action Section */}
             <section className="px-8 pb-16">
                 <div className="container mx-auto">
                     <div className="max-w-4xl mx-auto bg-gradient-to-r from-orange-500 to-red-500 rounded-3xl p-8 md:p-12 text-center text-white">
@@ -68,11 +69,21 @@ export default async function MealPlansPage() {
                         <p className="text-xl mb-8 opacity-90">
                             Join thousands of satisfied customers who trust us for their daily meals
                         </p>
-                        <Link href="/subscription">
-                            <button className="bg-white text-orange-600 font-bold py-4 px-8 rounded-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 shadow-lg">
+                        {isUser ? (
+                            <Link href="/subscription">
+                                <button className="bg-white text-orange-600 font-bold py-4 px-8 rounded-xl hover:bg-gray-100 transform hover:scale-105 transition-all duration-300 shadow-lg">
+                                    Get Started Today
+                                </button>
+                            </Link>
+                        ) : (
+                            <button
+                                className="bg-white text-orange-600 font-bold py-4 px-8 rounded-xl opacity-60 cursor-not-allowed shadow-lg"
+                                disabled
+                                title="Hanya user yang bisa melanjutkan"
+                            >
                                 Get Started Today
                             </button>
-                        </Link>
+                        )}
                     </div>
                 </div>
             </section>

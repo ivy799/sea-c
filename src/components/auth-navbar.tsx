@@ -1,238 +1,218 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Menu } from "lucide-react";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import { UserRole } from "@/db/schema";
 
 export default function AuthNavbar() {
   const { data: session, status } = useSession();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: "/" });
   };
 
+  const isAdmin = session?.user?.role === UserRole.Admin;
+
+  const navigationItems = [
+    { name: "Home", href: "/", description: "Landing page with overview of our services" },
+    { name: "Plans", href: "/menu", description: "Browse our healthy meal plans and options" },
+    { name: "Testimonials", href: "/testimonials", description: "Read customer reviews and share your experience" },
+    ...(
+      session && !isAdmin
+        ? [
+            { name: "Dashboard", href: "/dashboard", description: "Your personalized dashboard" },
+            { name: "Subscription", href: "/subscription", description: "Subscribe to our weekly meal plans" },
+          ]
+        : []
+    ),
+    ...(
+      session && isAdmin
+        ? [
+            { name: "Admin Dashboard", href: "/admin/dashboard", description: "Admin dashboard" },
+            { name: "Admin Panel", href: "/admin", description: "Admin management panel" }
+          ]
+        : []
+    ),
+    ...(
+      !session
+        ? [{ name: "Contact Us", href: "/contact", description: "Get in touch with our team" }]
+        : []
+    ),
+  ];
+
   return (
-    <nav className="bg-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex items-center">
-            <Link href="/" className="flex-shrink-0 flex items-center">
-              <span className="text-xl font-bold text-gray-800">SEA Culinary</span>
-            </Link>
-          </div>
-
-          <div className="hidden md:flex items-center space-x-4">
-            <Link
-              href="/"
-              className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-            >
-              Home
-            </Link>
-            <Link
-              href="/menu"
-              className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-            >
-              Menu
-            </Link>
-            
-            {status === "loading" ? (
-              <div className="text-gray-500">Loading...</div>
-            ) : session ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/subscription"
-                  className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  Subscription
-                </Link>
-                <Link
-                  href="/my-subscriptions"
-                  className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                >
-                  My Subscriptions
-                </Link>
-                {session.user.role === UserRole.Admin && (
-                  <>
-                    <Link
-                      href="/admin/dashboard"
-                      className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Admin Dashboard
-                    </Link>
-                    <Link
-                      href="/admin"
-                      className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                    >
-                      Admin Panel
-                    </Link>
-                  </>
-                )}
-                <div className="relative">
-                  <button
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="flex items-center text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
-                  >
-                    <span className="mr-2">Welcome, {session.user.name}</span>
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </button>
-                  {isMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
-                      <button
-                        onClick={handleSignOut}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      >
-                        Sign Out
-                      </button>
-                    </div>
+    <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        <Link href="/" className="flex items-center space-x-2">
+          <span className="text-2xl">🍽️</span>
+          <span className="text-xl font-bold text-orange-600">SEA Culinary</span>
+        </Link>
+        <NavigationMenu className="hidden md:flex">
+          <NavigationMenuList>
+            {navigationItems.map((item) => (
+              <NavigationMenuItem key={item.name}>
+                <NavigationMenuTrigger
+                  className={cn(
+                    "text-sm font-medium transition-colors hover:text-orange-600",
+                    pathname === item.href
+                      ? "text-orange-600 bg-orange-50"
+                      : "text-gray-700"
                   )}
-                </div>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/auth/login"
-                  className="text-gray-700 hover:text-gray-900 px-3 py-2 rounded-md text-sm font-medium"
                 >
-                  Sign In
-                </Link>
-                <Link
-                  href="/auth/register"
-                  className="bg-blue-600 text-white hover:bg-blue-700 px-4 py-2 rounded-md text-sm font-medium"
-                >
-                  Sign Up
-                </Link>
-              </>
-            )}
-          </div>
+                  {item.name}
+                </NavigationMenuTrigger>
+                <NavigationMenuContent>
+                  <div className="w-[400px] p-4">
+                    <NavigationMenuLink asChild>
+                      <Link
+                        href={item.href}
+                        className="block select-none space-y-1 rounded-md p-3 leading-none no-underline outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground"
+                      >
+                        <div className="text-sm font-medium leading-none">{item.name}</div>
+                        <p className="line-clamp-2 text-sm leading-snug text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </Link>
+                    </NavigationMenuLink>
+                  </div>
+                </NavigationMenuContent>
+              </NavigationMenuItem>
+            ))}
+          </NavigationMenuList>
+        </NavigationMenu>
 
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-gray-700 hover:text-gray-900 p-2"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        <div className="hidden md:flex items-center space-x-2">
+          {status === "loading" ? (
+            <div className="text-gray-500">Loading...</div>
+          ) : session ? (
+            <div className="relative">
+              <Button
+                variant="ghost"
+                className="flex items-center space-x-2"
+                onClick={() => setIsProfileOpen((v) => !v)}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
-          </div>
+                <span>Welcome, {session.user.name}</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </Button>
+              {isProfileOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <button
+                    onClick={handleSignOut}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <Link href="/auth/login">
+                <Button variant="ghost" className="text-gray-700 hover:text-gray-900">
+                  Sign In
+                </Button>
+              </Link>
+              <Link href="/auth/register">
+                <Button className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white">
+                  Sign Up
+                </Button>
+              </Link>
+            </>
+          )}
         </div>
 
-        {/* Mobile menu */}
-        {isMenuOpen && (
-          <div className="md:hidden">
-            <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-              <Link
-                href="/"
-                className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-              >
-                Home
-              </Link>
-              <Link
-                href="/menu"
-                className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-              >
-                Menu
-              </Link>
-              
-              {session ? (
-                <>
-                  <Link
-                    href="/dashboard"
-                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    href="/subscription"
-                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    Subscription
-                  </Link>
-                  <Link
-                    href="/my-subscriptions"
-                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    My Subscriptions
-                  </Link>
-                  {session.user.role === UserRole.Admin && (
-                    <>
-                      <Link
-                        href="/admin/dashboard"
-                        className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                      >
-                        Admin Dashboard
-                      </Link>
-                      <Link
-                        href="/admin"
-                        className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                      >
-                        Admin Panel
-                      </Link>
-                    </>
+        <Sheet>
+          <SheetTrigger asChild className="md:hidden">
+            <Button variant="outline" size="icon">
+              <Menu className="h-6 w-6" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle className="flex items-center space-x-2">
+                <span className="text-2xl">🍽️</span>
+                <span className="text-xl font-bold text-orange-600">SEA Culinary</span>
+              </SheetTitle>
+              <SheetDescription>
+                Healthy meals delivered to your doorstep
+              </SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-6 py-6">
+              {navigationItems.map((item) => (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    "flex flex-col space-y-1 p-2 rounded-md transition-colors",
+                    pathname === item.href
+                      ? "bg-orange-50 text-orange-600"
+                      : "hover:bg-gray-50"
                   )}
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="px-3 py-2 text-sm text-gray-500">
-                      Signed in as {session.user.name}
-                    </div>
-                    <button
-                      onClick={handleSignOut}
-                      className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium w-full text-left"
-                    >
-                      Sign Out
-                    </button>
+                >
+                  <span className="font-medium">{item.name}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {item.description}
+                  </span>
+                </Link>
+              ))}
+              {status === "loading" ? (
+                <div className="text-gray-500">Loading...</div>
+              ) : session ? (
+                <div className="border-t border-gray-200 pt-4">
+                  <div className="px-3 py-2 text-sm text-gray-500">
+                    Signed in as {session.user.name}
                   </div>
-                </>
+                  <button
+                    onClick={handleSignOut}
+                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium w-full text-left"
+                  >
+                    Sign Out
+                  </button>
+                </div>
               ) : (
                 <>
-                  <Link
-                    href="/auth/login"
-                    className="text-gray-700 hover:text-gray-900 block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    Sign In
+                  <Link href="/auth/login">
+                    <Button variant="ghost" className="w-full mt-2">
+                      Sign In
+                    </Button>
                   </Link>
-                  <Link
-                    href="/auth/register"
-                    className="bg-blue-600 text-white hover:bg-blue-700 block px-3 py-2 rounded-md text-base font-medium"
-                  >
-                    Sign Up
+                  <Link href="/auth/register">
+                    <Button className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white mt-2">
+                      Sign Up
+                    </Button>
                   </Link>
                 </>
               )}
             </div>
-          </div>
-        )}
+          </SheetContent>
+        </Sheet>
       </div>
-    </nav>
+    </header>
   );
 }

@@ -219,9 +219,6 @@ export default function MealPlanModal({ mealPlan, isOpen, onClose }: MealPlanMod
             >
               Close
             </button>
-            <button className="flex-1 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-lg">
-              Order Now
-            </button>
           </div>
         </div>
       </div>

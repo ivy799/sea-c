@@ -27,6 +27,7 @@ const navigationItems = [
   { name: "Home", href: "/", description: "Landing page with overview of our services" },
   { name: "Menu", href: "/menu", description: "Browse our healthy meal plans and options" },
   { name: "Subscription", href: "/subscription", description: "Subscribe to our weekly meal plans" },
+  { name: "Testimonials", href: "/testimonials", description: "Read customer reviews and share your experience" },
   { name: "Contact Us", href: "/contact", description: "Get in touch with our team" },
 ];
 
